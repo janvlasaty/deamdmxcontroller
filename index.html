@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DMX Light Controller</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #f4f4f4;
+    }
+
+    .light-row {
+      display: flex;
+      justify-content: center;
+      width: 100%;
+      margin: 20px 0;
+    }
+
+    .light {
+      width: 50px;
+      display: flex;
+      justify-content: center;
+      /* align-items: center; */
+      margin: 0 10px;
+    }
+
+
+    .light input {
+      width: 100%;
+    }
+
+    .light button {
+      width: 100%;
+      height: 30px;
+      margin: 5px 0;
+    }
+
+    .modal,
+    .overlay {
+      display: none;
+    }
+
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+    }
+
+    .modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 80%;
+      background: white;
+      padding: 20px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      z-index: 1001;
+    }
+
+    .modal-content {
+      display: flex;
+      flex-direction: column;
+      scroll-behavior: auto;
+    }
+
+    .slider-container {
+      margin: 4px 0;
+    }
+
+    .modal input {
+      width: 100%;
+    }
+
+    .modal button {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    #send-config {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    #history button {
+      margin: 5px 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="light-row">
+  </div>
+
+  <input type="text" id="name" value="some"></input>
+
+  <button id="send-config">Send Configuration</button>
+
+  <pre id="logger">...</pre>
+
+  <div id="history"></div>
+
+  <div id="cliboard">
+    <button id="copy" onclick="clipCopy();">Copy</button>
+    <textarea id="clipboard"></textarea>
+    <button id="load" onclick="clipLoad()">Load</button>
+  </div>
+
+  <div class="overlay"></div>
+
+  <div class="modal">
+    <div class="modal-content">
+      <h3>Light Configuration</h3>
+      <div class="slider-container big small">
+        <label for="dim">Dim</label>
+        <input type="range" id="dim" name="dim" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big small">
+        <label for="red">Red</label>
+        <input type="range" id="red" name="red" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big small">
+        <label for="green">Green</label>
+        <input type="range" id="green" name="green" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big small">
+        <label for="blue">Blue</label>
+        <input type="range" id="blue" name="blue" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container small">
+        <label for="white">White</label>
+        <input type="range" id="white" name="white" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big">
+        <label for="uv">UV</label>
+        <input type="range" id="uv" name="uv" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big">
+        <label for="leftBottomCold">Left Bottom Cold</label>
+        <input type="range" id="leftBottomCold" name="leftBottomCold" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big">
+        <label for="rightBottomWarm">Right Bottom Warm</label>
+        <input type="range" id="rightBottomWarm" name="rightBottomWarm" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big">
+        <label for="rightTopCold">Right Top Cold</label>
+        <input type="range" id="rightTopCold" name="rightTopCold" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big">
+        <label for="leftTopWarm">Left Top Warm</label>
+        <input type="range" id="leftTopWarm" name="leftTopWarm" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big small">
+        <label for="strobe">strobe</label>
+        <input type="range" id="strobe" name="strobe" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big small">
+        <label for="fn">Function</label>
+        <input type="range" id="fn" name="fn" min="0" max="255" step="1">
+      </div>
+      <div class="slider-container big small">
+        <label for="fnspeed">Function speed</label>
+        <input type="range" id="fnspeed" name="fnspeed" min="0" max="255" step="1">
+      </div>
+      <button id="save-config">Save</button>
+    </div>
+  </div>
+
+  <script>
+    class Light {
+      opts = {
+        address: 1,
+        type: "small",
+        // functions: [],
+      };
+      constructor(type) {
+        this.opts.type = type;
+      }
+      setAddress = (i) => {
+        this.opts.address = i;
+        return this;
+      };
+      addFns = (functions) => {
+        this.opts.functions = functions;
+        return this;
+      };
+      get = () => {
+        return { ...this.opts };
+      };
+      getType = () => {
+        return this.opts.type;
+      };
+      getAddress = () => {
+        return this.opts.address;
+      };
+    }
+    class LightBig extends Light {
+      constructor(
+        dim,
+        strobe,
+        red,
+        green,
+        blue,
+        uv,
+        leftBottomCold,
+        rightBottomWarm,
+        rightTopCold,
+        leftTopWarm,
+        fn,
+        fnspeed
+      ) {
+        super("big");
+        this.opts.values = [
+          dim,
+          strobe,
+          red,
+          green,
+          blue,
+          uv,
+          leftBottomCold,
+          rightBottomWarm,
+          rightTopCold,
+          leftTopWarm,
+          fn,
+          fnspeed
+        ];
+      }
+      setValue = (type, value) => {
+        switch (type) {
+          case 'dim':
+            this.opts.values[0] = value;
+            break;
+          case 'strobe':
+            this.opts.values[1] = value;
+            break;
+          case 'red':
+            this.opts.values[2] = value;
+            break;
+          case 'green':
+            this.opts.values[3] = value;
+            break;
+          case 'blue':
+            this.opts.values[4] = value;
+            break;
+          case 'uv':
+            this.opts.values[5] = value;
+            break;
+          case 'leftBottomCold':
+            this.opts.values[6] = value;
+            break;
+          case 'rightBottomWarm':
+            this.opts.values[7] = value;
+            break;
+          case 'rightTopCold':
+            this.opts.values[8] = value;
+            break;
+          case 'leftTopWarm':
+            this.opts.values[9] = value;
+            break;
+          case 'fn':
+            this.opts.values[10] = value;
+            break;
+          case 'fnspeed':
+            this.opts.values[11] = value;
+            break;
+        }
+        return this;
+      };
+      getValue = (type) => {
+        switch (type) {
+          case 'dim':
+            return this.opts.values[0];
+          case 'strobe':
+            return this.opts.values[1];
+          case 'red':
+            return this.opts.values[2];
+          case 'green':
+            return this.opts.values[3];
+          case 'blue':
+            return this.opts.values[4];
+          case 'uv':
+            return this.opts.values[5];
+          case 'leftBottomCold':
+            return this.opts.values[6];
+          case 'rightBottomWarm':
+            return this.opts.values[7];
+          case 'rightTopCold':
+            return this.opts.values[8];
+          case 'leftTopWarm':
+            return this.opts.values[9];
+          case 'fn':
+            return this.opts.values[10];
+          case 'fnspeed':
+            return this.opts.values[11];
+        }
+      }
+      zero = () => {
+        this.opts.values = new Array(12).fill(0);
+        return this;
+      };
+    }
+    class LightSmall extends Light {
+      constructor(dim, red, green, blue, white, strobe, fn, fnspeed) {
+        super("small");
+        this.opts.values = [dim, red, green, blue, white, strobe, fn, fnspeed];
+      }
+
+      setValue = (type, value) => {
+        switch (type) {
+          case 'dim':
+            this.opts.values[0] = value;
+            break;
+          case 'red':
+            this.opts.values[1] = value;
+            break;
+          case 'green':
+            this.opts.values[2] = value;
+            break;
+          case 'blue':
+            this.opts.values[3] = value;
+            break;
+          case 'white':
+            this.opts.values[4] = value;
+            break;
+          case 'strobe':
+            this.opts.values[5] = value;
+            break;
+          case 'fn':
+            this.opts.values[6] = value;
+            break;
+          case 'fnspeed':
+            this.opts.values[7] = value;
+            break;
+        }
+        return this;
+      };
+      getValue = (type) => {
+        switch (type) {
+          case 'dim':
+            return this.opts.values[0];
+          case 'red':
+            return this.opts.values[1];
+          case 'green':
+            return this.opts.values[2];
+          case 'blue':
+            return this.opts.values[3];
+          case 'white':
+            return this.opts.values[4];
+          case 'strobe':
+            return this.opts.values[5];
+          case 'fn':
+            return this.opts.values[6];
+          case 'fnspeed':
+            return this.opts.values[7];
+        }
+      }
+      zero = () => {
+        this.opts.values = new Array(8).fill(0);
+        return this;
+      };
+    }
+
+    let history = localStorage.getItem("history") || "{}";
+    history = JSON.parse(history)
+    localStorage.setItem("history", JSON.stringify(history))
+
+    function clipCopy() {
+      document.getElementById("clipboard").value = JSON.stringify(history)
+      navigator.clipboard.writeText(JSON.stringify(history));
+    }
+    function clipLoad() {
+      history = JSON.parse(document.getElementById("clipboard").value)
+      drawHistory()
+    }
+
+    function drawHistory() {
+      document.getElementById("history").innerHTML = '';
+      for (let [i, config] of Object.entries(history)) {
+        const div = document.createElement("div")
+        const histButton = document.createElement("button")
+        histButton.innerHTML = "set " + i
+        histButton.addEventListener("click", () => {
+          send(history[i])
+        })
+
+        const removeButton = document.createElement("button")
+        removeButton.innerHTML = 'x'
+        removeButton.addEventListener("click", () => {
+          delete history[i]
+          drawHistory()
+        })
+        div.appendChild(histButton)
+        div.appendChild(removeButton)
+        document.getElementById("history").appendChild(div)
+      }
+      localStorage.setItem("history", JSON.stringify(history))
+
+    }
+
+    drawHistory();
+
+    let currentLight = null;
+    const lights = document.querySelectorAll('.light');
+    const overlay = document.querySelector('.overlay');
+    const modal = document.querySelector('.modal');
+    const sendConfigButton = document.getElementById('send-config');
+    const saveConfigButton = document.getElementById('save-config');
+
+    const config = [
+      new LightSmall(10, 255, 0, 0, 0, 0, 0, 0, 0).setAddress(81),
+      new LightSmall(10, 0, 255, 0, 0, 0, 0, 0, 0).setAddress(101),
+      new LightBig(10, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0).setAddress(1),
+      new LightBig(10, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0).setAddress(21),
+      new LightSmall(10, 0, 0, 255, 0, 0, 0, 0, 0).setAddress(41),
+      new LightSmall(10, 0, 0, 0, 255, 0, 0, 0, 0).setAddress(61),
+    ];
+
+    for (const [i, lightConfig] of config.entries()) {
+      console.log(lightConfig);
+      const light = document.createElement('div');
+
+      const uiWrapper = document.createElement('div');
+      // add input number for each light
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = 1;
+      input.value = lightConfig.getAddress();
+      input.addEventListener('change', (e) => {
+        const newAddress = e.target.value;
+        lightConfig.setAddress(newAddress);
+      });
+      uiWrapper.appendChild(input);
+
+      // add button for each light
+      const button = document.createElement('button');
+      button.innerText = 'Set';
+      console.log(lightConfig);
+      button.addEventListener('click', () => {
+        currentLight = lightConfig;
+        console.log(lightConfig, lightConfig.getType());
+        if (lightConfig.getType() == "big") {
+          document.querySelectorAll('.slider-container').forEach((el) => {
+            el.style.display = 'none'
+          });
+          document.querySelectorAll('.big').forEach((el) => el.style.display = 'block');
+          document.getElementById('dim').value = lightConfig.getValue('dim');
+          console.log(lightConfig.getValue('strobe'));
+          document.getElementById('strobe').value = lightConfig.getValue('strobe');
+          document.getElementById('red').value = lightConfig.getValue('red');
+          document.getElementById('green').value = lightConfig.getValue('green');
+          document.getElementById('blue').value = lightConfig.getValue('blue');
+          document.getElementById('uv').value = lightConfig.getValue('uv');
+          document.getElementById('leftBottomCold').value = lightConfig.getValue('leftBottomCold');
+          document.getElementById('rightBottomWarm').value = lightConfig.getValue('rightBottomWarm');
+          document.getElementById('rightTopCold').value = lightConfig.getValue('rightTopCold');
+          document.getElementById('leftTopWarm').value = lightConfig.getValue('leftTopWarm');
+          document.getElementById('fn').value = lightConfig.getValue('fn');
+          document.getElementById('fnspeed').value = lightConfig.getValue('fnspeed');
+        }
+        if (lightConfig.getType() == "small") {
+          console.log("small")
+          document.querySelectorAll('.slider-container').forEach((el) => {
+            el.style.display = 'none'
+          });
+          document.querySelectorAll('.small').forEach((el) => el.style.display = 'block');
+
+          document.getElementById('dim').value = lightConfig.getValue('dim');
+          document.getElementById('red').value = lightConfig.getValue('red');
+          document.getElementById('green').value = lightConfig.getValue('green');
+          document.getElementById('blue').value = lightConfig.getValue('blue');
+          document.getElementById('white').value = lightConfig.getValue('white');
+          document.getElementById('strobe').value = lightConfig.getValue('strobe');
+          document.getElementById('fn').value = lightConfig.getValue('fn');
+          document.getElementById('fnspeed').value = lightConfig.getValue('fnspeed');
+        }
+
+        overlay.style.display = 'block';
+        modal.style.display = 'block';
+      });
+      uiWrapper.appendChild(button);
+
+      const buttonBlack = document.createElement('button');
+      buttonBlack.innerText = 'Black';
+      buttonBlack.addEventListener('click', () => {
+        lightConfig.zero();
+      });
+      uiWrapper.appendChild(buttonBlack);
+
+
+      // white
+      const buttonWhite = document.createElement('button');
+      buttonWhite.innerText = 'White';
+      buttonWhite.addEventListener('click', () => {
+        lightConfig.zero();
+        if (lightConfig.getType() == "big") {
+          lightConfig.setValue('dim', 255);
+          lightConfig.setValue('leftBottomCold', 255);
+          lightConfig.setValue('rightBottomWarm', 255);
+          lightConfig.setValue('rightTopCold', 255);
+          lightConfig.setValue('leftTopWarm', 255);
+        }
+        if (lightConfig.getType() == "small") {
+          lightConfig.setValue('dim', 255);
+          lightConfig.setValue('white', 255);
+        }
+      });
+      uiWrapper.appendChild(buttonWhite);
+
+
+
+      light.appendChild(uiWrapper);
+
+      light.classList.add('light');
+      light.classList.add(lightConfig.type);
+
+      document.querySelector('.light-row').appendChild(light);
+    }
+
+    overlay.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      modal.style.display = 'none';
+    });
+
+    saveConfigButton.addEventListener('click', () => {
+      if (currentLight.getType() === "big") {
+        currentLight.setValue('dim', document.getElementById('dim').value);
+        currentLight.setValue('strobe', document.getElementById('strobe').value);
+        currentLight.setValue('red', document.getElementById('red').value);
+        currentLight.setValue('green', document.getElementById('green').value);
+        currentLight.setValue('blue', document.getElementById('blue').value);
+        currentLight.setValue('uv', document.getElementById('uv').value);
+        currentLight.setValue('leftBottomCold', document.getElementById('leftBottomCold').value);
+        currentLight.setValue('rightBottomWarm', document.getElementById('rightBottomWarm').value);
+        currentLight.setValue('rightTopCold', document.getElementById('rightTopCold').value);
+        currentLight.setValue('leftTopWarm', document.getElementById('leftTopWarm').value);
+        currentLight.setValue('fn', document.getElementById('fn').value);
+        currentLight.setValue('fnspeed', document.getElementById('fnspeed').value);
+      }
+      if (currentLight.getType() === "small") {
+        currentLight.setValue('dim', document.getElementById('dim').value);
+        currentLight.setValue('red', document.getElementById('red').value);
+        currentLight.setValue('green', document.getElementById('green').value);
+        currentLight.setValue('blue', document.getElementById('blue').value);
+        currentLight.setValue('white', document.getElementById('white').value);
+        currentLight.setValue('strobe', document.getElementById('strobe').value);
+        currentLight.setValue('fn', document.getElementById('fn').value);
+        currentLight.setValue('fnspeed', document.getElementById('fnspeed').value);
+      }
+
+      // write to logger
+      document.getElementById('logger').innerText = JSON.stringify(currentLight.get(), null, 2);
+
+      overlay.style.display = 'none';
+      modal.style.display = 'none';
+    });
+
+    sendConfigButton.addEventListener('click', () => {
+      let data = {
+        values: new Array(511).fill(0)
+      }
+      history[document.querySelector("#name").value] = { ...data }
+      drawHistory();
+      for (let light of config) {
+        let values = light.get().values
+        for (let [i, value] of values.entries()) {
+          data.values[light.getAddress() + i] = value
+        }
+      }
+      send(data)
+    });
+
+    function send(data) {
+      console.log(data);
+      fetch('/post-message', {
+        method: 'POST',
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      })
+        .then(response => response.json())
+        .then(data => {
+          console.log('Success:', data)
+          document.getElementById('logger').innerText = JSON.stringify(data, null, 2);
+        })
+        .catch((error) => {
+          console.error('Error:', error)
+          document.getElementById('logger').innerText = JSON.stringify(error, null, 2);
+        });
+    }
+  </script>
+</body>
+
+</html>
